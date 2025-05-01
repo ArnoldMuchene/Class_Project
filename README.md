@@ -1,6 +1,7 @@
 # Spatial Analysis of Property Prices in Philadelphia
 
-![Project Banner](https://via.placeholder.com/1200x200.png?text=Property+Price+Analysis) <!-- Replace with actual banner image if available -->
+![image](https://github.com/user-attachments/assets/d63fcb8c-484a-4634-a61f-c80f8e9069ec)
+
 
 ## 📖 Overview
 
