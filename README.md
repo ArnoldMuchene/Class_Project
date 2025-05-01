@@ -25,61 +25,32 @@ This project analyzes single-family properties in Philadelphia to explore how pr
 1. Clone the repository:
    ```bash
    https://github.com/ArnoldMuchene/Class_Project   
-Place shapefiles in the ~/ArcGIS/Inputs directory (or update the path in the script).
+# Property Analysis Project
 
-Usage
-Open the R script (analysis.R) in RStudio or your preferred R environment.
+This project provides an R script for spatial data analysis, focusing on property data processing, distance calculations, regression modeling, and visualization generation using shapefiles.
 
-Update the working directory path in the setwd() function to match your shapefile location.
+## Setup
 
-Run the script to:
-Load and preprocess spatial data.
+1. **Place Shapefiles**: Store shapefiles in the `~/ArcGIS/Inputs` directory or update the file path in the script (`analysis.R`).
+2. **Dependencies**: Ensure R and required packages (e.g., `sf`, `dplyr`, `ggplot2`, `stargazer`) are installed. Install missing packages using `install.packages()`.
 
-Filter properties and calculate distances.
+## Usage
 
-Generate metrics, regression models, and visualizations.
+1. Open `analysis.R` in RStudio or your preferred R environment.
+2. Update the working directory in the `setwd()` function to point to your shapefile location.
+3. Run the script to:
+   - Load and preprocess spatial data.
+   - Filter properties and calculate distances (e.g., to transit).
+   - Generate metrics, regression models, and visualizations.
+   - Save outputs to the `outputs/` directory.
 
-Save outputs (regression_tables_scaled_polynomial.docx, filtered_properties_map.png, boxplot_all_variables_faceted.png).
 
- Outputs
-Word Document: Formatted regression tables, t-test results, and boxplot analysis.
+## Outputs
 
-Visualizations:
-Map of filtered properties colored by sale price (filtered_properties_map.png).
+- **Word Document**: `regression_tables_scaled_polynomial.docx` containing formatted regression tables, t-test results, and boxplot analysis.
+- **Visualizations**:
+  - `filtered_properties_map.png`: Map of filtered properties colored by sale price.
+  - `boxplot_all_variables_faceted.png`: Faceted boxplot comparing property characteristics by year built.
+- **Console Outputs**: Summary tables for t-tests and distance-to-transit effects.
 
-Faceted boxplot comparing property characteristics by year built (boxplot_all_variables_faceted.png).
-
-Console Outputs: Summary tables for t-tests and distance-to-transit effects.
-
- Repository Structure
-
-├── analysis.R                # Main R script for the analysis
-├── README.md                # Project documentation
-├── ArcGIS/Inputs/           # Directory for shapefiles (not included)
-└── outputs/                 # Directory for generated Word doc and PNGs
-
- Customization
-Shapefile Paths: Modify the setwd() and st_read() paths to match your data location.
-
-Filters: Adjust the 800m transit buffer or distance conditions in the script.
-
-Models: Add or modify predictors in the regression models for different analyses.
-
- Contributing
-Contributions are welcome! Please:
-Fork the repository.
-
-Create a feature branch (git checkout -b feature/your-feature).
-
-Commit changes (git commit -m 'Add your feature').
-
-Push to the branch (git push origin feature/your-feature).
-
-Open a pull request.
-
- License
-This project is licensed under the MIT License. See the LICENSE file for details.
- Contact
-For questions or feedback, open an issue or contact Your Name (mailto:your.email@example.com).
- If you find this project useful, please give it a star on GitHub!
-
+## Repository Structure
