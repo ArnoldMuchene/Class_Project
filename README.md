@@ -25,3 +25,61 @@ This project analyzes single-family properties in Philadelphia to explore how pr
 1. Clone the repository:
    ```bash
    https://github.com/ArnoldMuchene/Class_Project   
+Place shapefiles in the ~/ArcGIS/Inputs directory (or update the path in the script).
+
+Usage
+Open the R script (analysis.R) in RStudio or your preferred R environment.
+
+Update the working directory path in the setwd() function to match your shapefile location.
+
+Run the script to:
+Load and preprocess spatial data.
+
+Filter properties and calculate distances.
+
+Generate metrics, regression models, and visualizations.
+
+Save outputs (regression_tables_scaled_polynomial.docx, filtered_properties_map.png, boxplot_all_variables_faceted.png).
+
+ Outputs
+Word Document: Formatted regression tables, t-test results, and boxplot analysis.
+
+Visualizations:
+Map of filtered properties colored by sale price (filtered_properties_map.png).
+
+Faceted boxplot comparing property characteristics by year built (boxplot_all_variables_faceted.png).
+
+Console Outputs: Summary tables for t-tests and distance-to-transit effects.
+
+ Repository Structure
+
+├── analysis.R                # Main R script for the analysis
+├── README.md                # Project documentation
+├── ArcGIS/Inputs/           # Directory for shapefiles (not included)
+└── outputs/                 # Directory for generated Word doc and PNGs
+
+ Customization
+Shapefile Paths: Modify the setwd() and st_read() paths to match your data location.
+
+Filters: Adjust the 800m transit buffer or distance conditions in the script.
+
+Models: Add or modify predictors in the regression models for different analyses.
+
+ Contributing
+Contributions are welcome! Please:
+Fork the repository.
+
+Create a feature branch (git checkout -b feature/your-feature).
+
+Commit changes (git commit -m 'Add your feature').
+
+Push to the branch (git push origin feature/your-feature).
+
+Open a pull request.
+
+ License
+This project is licensed under the MIT License. See the LICENSE file for details.
+ Contact
+For questions or feedback, open an issue or contact Your Name (mailto:your.email@example.com).
+ If you find this project useful, please give it a star on GitHub!
+
