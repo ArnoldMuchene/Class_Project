@@ -54,3 +54,40 @@ This project provides an R script for spatial data analysis, focusing on propert
 - **Console Outputs**: Summary tables for t-tests and distance-to-transit effects.
 
 ## Repository Structure
+
+
+
+├── analysis.R                     # Main R script for the analysis
+
+├── README.md                     # Project documentation
+
+├── ArcGIS/Inputs/                # Directory for shapefiles (not included)
+
+└── outputs/                      # Directory for generated Word doc and PNGs
+
+
+## Customization
+
+- **Shapefile Paths**: Update `setwd()` and `st_read()` paths in `analysis.R` to match your data location.
+- **Filters**: Modify the 800m transit buffer or other distance conditions in the script.
+- **Models**: Add or adjust predictors in regression models for alternative analyses.
+
+## Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/your-feature`).
+3. Commit changes (`git commit -m 'Add your feature'`).
+4. Push to the branch (`git push origin feature/your-feature`).
+5. Open a pull request.
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
+
+## Contact
+
+For questions or feedback, open an issue or contact [Your Name](arnoldnjengabiz@gmail.com).
+
+If you find this project useful, please give it a star on GitHub!
