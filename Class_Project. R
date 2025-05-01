@@ -1,0 +1,357 @@
+# Load required packages
+library(sf)          # For handling spatial data
+library(dplyr)       # For data manipulation
+library(ggplot2)     # For visualization
+library(sp)          # For spatial operations
+library(car)         # For VIF checking
+library(flextable)   # For formatted tables in Word
+library(officer)     # For Word document creation
+library(broom)       # For tidy model outputs
+
+# Clear the environment
+rm(list = ls())
+
+# Set working directory (adjust path as needed)
+setwd("~/ArcGIS/Inputs")
+
+# Read shapefiles with error handling
+tryCatch({
+  property_data <- st_read("Opa_Properties_LivingAreas.shp")
+  transit_stops <- st_read("HighSpeed_Stations.shp")
+  transit_lines <- st_read("HighSpeed_Lines.shp")
+  redline_data <- st_read("Redline.shp")
+  crime_data <- st_read("incidents_Part1.shp")
+  job_proximity <- st_read("Job_Proximity_EPA.shp")
+}, error = function(e) {
+  stop("Error reading shapefiles: ", e$message)
+})
+
+# Ensure consistent coordinate reference system (CRS)
+common_crs <- st_crs(transit_stops)
+property_data <- st_transform(property_data, common_crs)
+transit_lines <- st_transform(transit_lines, common_crs)
+redline_data <- st_transform(redline_data, common_crs)
+crime_data <- st_transform(crime_data, common_crs)
+job_proximity <- st_transform(job_proximity, common_crs)
+
+# Filter for SINGLE FAMILY properties
+property_data <- property_data %>%
+  filter(toupper(category_1) == "SINGLE FAMILY")
+if (nrow(property_data) == 0) stop("No SINGLE FAMILY properties found.")
+
+# Filter properties within 800m of transit lines
+transit_buffer <- st_buffer(transit_lines, dist = 800)
+property_data <- st_filter(property_data, st_union(transit_buffer), .predicate = st_intersects)
+if (nrow(property_data) == 0) stop("No properties within 800m of transit lines.")
+
+# Calculate distances
+dist_to_transit <- st_distance(property_data, transit_lines)
+property_data$dist_to_transit <- as.numeric(apply(dist_to_transit, 1, min))
+
+nearest_crime_idx <- st_nearest_feature(property_data, crime_data)
+property_data$dist_to_crime <- as.numeric(st_distance(property_data, crime_data[nearest_crime_idx, ], by_element = TRUE))
+
+nearest_job_idx <- st_nearest_feature(property_data, job_proximity)
+property_data$dist_to_jobs <- as.numeric(st_distance(property_data, job_proximity[nearest_job_idx, ], by_element = TRUE))
+
+# Filter properties where dist_to_transit > dist_to_crime and dist_to_transit > dist_to_jobs
+filtered_properties <- property_data %>%
+  filter(dist_to_transit > dist_to_crime & dist_to_transit > dist_to_jobs)
+
+if (nrow(filtered_properties) == 0) {
+  warning("No properties meet the condition dist_to_transit > dist_to_crime and dist_to_transit > dist_to_jobs. Using all properties.")
+  filtered_properties <- property_data
+} else {
+  cat("Number of filtered properties:", nrow(filtered_properties), "\n")
+}
+
+# Calculate job proximity metric
+filtered_properties$job_access <- 1 / (filtered_properties$dist_to_jobs + 1)
+
+# Calculate crime density
+crime_buffer <- st_buffer(filtered_properties, dist = 800)
+crime_counts <- st_intersects(crime_buffer, crime_data)
+filtered_properties$crime_density <- lengths(crime_counts) / (800^2)
+
+# Visualize filtered properties
+p_map <- ggplot() +
+  geom_sf(data = filtered_properties, aes(color = sale_price), size = 1) +
+  scale_color_gradientn(colors = c("blue", "red"), name = "Sale Price") +
+  geom_sf(data = transit_lines, color = "blue", linewidth = 1) +
+  theme_minimal() +
+  labs(title = "Filtered Properties in Philadelphia",
+       subtitle = "Distance to Transit > Distance to Crime & Jobs",
+       caption = "Colored by Sale Price")
+print(p_map)
+ggsave("filtered_properties_map.png", p_map, width = 8, height = 6, dpi = 300)
+
+# Transform and scale crime_density
+filtered_properties <- filtered_properties %>%
+  mutate(
+    log_crime_density = ifelse(crime_density > 0, log(crime_density), NA),
+    scaled_log_crime_density = as.numeric(scale(log_crime_density)),
+    scaled_log_crime_density_sq = scaled_log_crime_density^2
+  )
+
+# Define year ranges
+year_ranges <- list(
+  "1990_2000" = filtered_properties %>% filter(year_built >= 1990 & year_built < 2001),
+  "2010_2024" = filtered_properties %>% filter(year_built >= 2010 & year_built < 2025)
+)
+
+# Run regression models
+models <- lapply(names(year_ranges), function(name) {
+  data_subset <- year_ranges[[name]]
+  if (nrow(data_subset) > 10) {
+    data_subset <- data_subset %>% mutate(year_built = as.factor(year_built))
+    model <- lm(sale_price ~ scaled_log_crime_density_sq + dist_to_transit + total_liva + year_built,
+                data = data_subset)
+    return(list(name = name, model = model))
+  } else {
+    return(list(name = name, model = NULL, message = "Not enough data"))
+  }
+})
+
+# Function to create a formatted regression table
+create_regression_table <- function(model, model_name) {
+  if (is.null(model$model)) {
+    return(data.frame(Note = model$message))
+  }
+  
+  tidy_model <- broom::tidy(model$model) %>%
+    mutate(
+      estimate = format(round(estimate, 2), big.mark = ",", scientific = FALSE),
+      std.error = format(round(std.error, 2), big.mark = ",", scientific = FALSE),
+      statistic = round(statistic, 3),
+      p.value = format.pval(p.value, digits = 3, eps = 0.0001),
+      significance = case_when(
+        p.value < 0.001 ~ "***",
+        p.value < 0.01 ~ "**",
+        p.value < 0.05 ~ "*",
+        p.value < 0.1 ~ ".",
+        TRUE ~ ""
+      )
+    ) %>%
+    rename(
+      Predictor = term,
+      "Std. Error" = std.error,
+      "t value" = statistic,
+      "Pr(>|t|)" = p.value,
+      Significance = significance
+    )
+  
+  glance_model <- broom::glance(model$model)
+  fit_stats <- data.frame(
+    Predictor = c("Residual Std. Error", "Degrees of Freedom", "Multiple R-squared",
+                  "Adjusted R-squared", "F-statistic", "p-value"),
+    Estimate = c(
+      format(round(glance_model$sigma, 2), big.mark = ","),
+      glance_model$df.residual,
+      round(glance_model$r.squared, 4),
+      round(glance_model$adj.r.squared, 4),
+      round(glance_model$statistic, 2),
+      format.pval(glance_model$p.value, digits = 3, eps = 0.0001)
+    ),
+    "Std. Error" = "",
+    "t value" = "",
+    "Pr(>|t|)" = "",
+    Significance = ""
+  )
+  
+  regression_table <- bind_rows(
+    data.frame(Predictor = "Coefficients", Estimate = "", "Std. Error" = "", "t value" = "", "Pr(>|t|)" = "", Significance = ""),
+    tidy_model,
+    data.frame(Predictor = "Model Fit Statistics", Estimate = "", "Std. Error" = "", "t value" = "", "Pr(>|t|)" = "", Significance = ""),
+    fit_stats
+  )
+  
+  return(regression_table)
+}
+
+# Create a Word document
+doc <- read_docx()
+
+# Add regression tables
+for (i in seq_along(models)) {
+  model_name <- models[[i]]$name
+  table_data <- create_regression_table(models[[i]], model_name)
+  
+  doc <- body_add_par(doc, value = paste("Regression Results:", model_name), style = "heading 1")
+  doc <- body_add_par(doc, value = "", style = "Normal")
+  
+  ft <- flextable(table_data) %>%
+    set_table_properties(width = 1, layout = "autofit") %>%
+    theme_zebra(odd_body = "#F5F6F5", even_body = "#FFFFFF") %>%
+    bg(bg = "#4F81BD", part = "header") %>%
+    color(color = "white", part = "header") %>%
+    bold(part = "header") %>%
+    align(align = "center", part = "all") %>%
+    align(align = "left", j = "Predictor", part = "body") %>%
+    fontsize(size = 10, part = "all") %>%
+    padding(padding = 4, part = "all") %>%
+    border_outer(border = fp_border(color = "black", width = 2)) %>%
+    border_inner_h(border = fp_border(color = "gray80", width = 1)) %>%
+    border_inner_v(border = fp_border(color = "gray80", width = 1)) %>%
+    bold(i = ~ Predictor %in% c("Coefficients", "Model Fit Statistics")) %>%
+    set_caption(caption = paste("Regression Table for", model_name))
+  
+  doc <- body_add_flextable(doc, value = ft)
+  doc <- body_add_par(doc, value = "", style = "Normal")
+}
+
+# Add notes and significance codes
+doc <- body_add_par(doc, "Notes:", style = "Normal")
+doc <- body_add_par(doc, "scaled_log_crime_density is the standardized (z-score) log of crime_density.", style = "Normal")
+doc <- body_add_par(doc, "scaled_log_crime_density_sq is the squared version of that standardized log term, capturing non-linear effects.", style = "Normal")
+doc <- body_add_par(doc, "Significance Codes:", style = "Normal")
+doc <- body_add_par(doc, "*** p < 0.001, ** p < 0.01, * p < 0.05, . p < 0.1", style = "Normal")
+doc <- body_add_par(doc, value = "", style = "Normal")
+
+# Add Boxplot Analysis section
+doc <- body_add_par(doc, "Boxplot Analysis", style = "heading 1")
+doc <- body_add_par(doc, "The following boxplots compare key property characteristics between homes built in 1990–2000 and 2010–2024. Each plot visualizes the distribution of values, including medians, interquartile ranges, and outliers, for sale price, scaled log crime density (squared), distance to transit, and living area.", style = "Normal")
+doc <- body_add_par(doc, value = "", style = "Normal")
+
+doc <- body_add_par(doc, "Sale Price:", style = "heading 2")
+doc <- body_add_par(doc, "The boxplot for sale price shows a significant increase for newer homes (2010–2024) compared to older homes (1990–2000). The mean sale price is $298,075 for 1990–2000 homes and $509,578 for 2010–2024 homes, reflecting higher-end or larger designs in newer properties. The 2010–2024 group exhibits a higher median and wider interquartile range, indicating greater price variability and more high-value outliers.", style = "Normal")
+
+doc <- body_add_par(doc, "Scaled Log Crime Density (Squared):", style = "heading 2")
+doc <- body_add_par(doc, "The boxplot for scaled log crime density (squared) indicates that newer homes (2010–2024) are located in safer areas, with a mean value of 0.47 compared to 2.54 for 1990–2000 homes. The 2010–2024 group has a lower median and narrower interquartile range, suggesting consistently lower crime densities, while the 1990–2000 group shows greater variability and higher crime density.", style = "Normal")
+
+doc <- body_add_par(doc, "Distance to Transit:", style = "heading 2")
+doc <- body_add_par(doc, "The boxplot for distance to transit reveals that newer homes (2010–2024) are farther from transit lines, with a mean distance of 388.96 meters compared to 308.86 meters for 1990–2000 homes. The 2010–2024 group has a higher median and more outliers, reflecting urban sprawl or lagging transit infrastructure in newer developments.", style = "Normal")
+
+doc <- body_add_par(doc, "Living Area:", style = "heading 2")
+doc <- body_add_par(doc, "The boxplot for living area shows that newer homes (2010–2024) are larger, with a mean of 1,874.89 square feet compared to 1,543.82 square feet for 1990–2000 homes. The 2010–2024 group has a higher median and wider interquartile range, indicating more spacious designs and larger outliers, while older homes are more compact.", style = "Normal")
+doc <- body_add_par(doc, value = "", style = "Normal")
+
+# Add T-Test Results section
+doc <- body_add_par(doc, "T-Test Results", style = "heading 1")
+doc <- body_add_par(doc, "The table below summarizes t-test results comparing the means of key variables between homes built in 1990–2000 and 2010–2024. All p-values are less than 2.2e-16, indicating highly significant differences.", style = "Normal")
+doc <- body_add_par(doc, value = "", style = "Normal")
+
+# Format t_test_summary for flextable
+t_test_table <- t_test_summary %>%
+  rename(
+    "Variable" = Variable,
+    "Mean 1990–2000" = Mean_1990_2000,
+    "Mean 2010–2024" = Mean_2010_2024,
+    "p-value" = p.value
+  ) %>%
+  mutate(
+    "Mean 1990–2000" = format(round(`Mean 1990–2000`, 2), big.mark = ","),
+    "Mean 2010–2024" = format(round(`Mean 2010–2024`, 2), big.mark = ",")
+  )
+
+ft_ttest <- flextable(t_test_table) %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  theme_zebra(odd_body = "#F5F6F5", even_body = "#FFFFFF") %>%
+  bg(bg = "#4F81BD", part = "header") %>%
+  color(color = "white", part = "header") %>%
+  bold(part = "header") %>%
+  align(align = "center", part = "all") %>%
+  align(align = "left", j = "Variable", part = "body") %>%
+  fontsize(size = 10, part = "all") %>%
+  padding(padding = 4, part = "all") %>%
+  border_outer(border = fp_border(color = "black", width = 2)) %>%
+  border_inner_h(border = fp_border(color = "gray80", width = 1)) %>%
+  border_inner_v(border = fp_border(color = "gray80", width = 1)) %>%
+  set_caption(caption = "T-Test Results for Property Characteristics (1990–2000 vs. 2010–2024)")
+
+doc <- body_add_flextable(doc, value = ft_ttest)
+doc <- body_add_par(doc, value = "", style = "Normal")
+
+# Save the Word document
+print(doc, target = "regression_tables_scaled_polynomial.docx")
+
+# List of variables to compare
+variables_to_test <- c("sale_price", "scaled_log_crime_density_sq", "dist_to_transit", "total_liva")
+
+# Create year_group column
+filtered_properties <- filtered_properties %>%
+  mutate(year_group = case_when(
+    year_built >= 1990 & year_built < 2001 ~ "1990_2000",
+    year_built >= 2010 & year_built < 2025 ~ "2010_2024",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(year_group))
+
+# Perform t-tests
+t_test_results <- lapply(variables_to_test, function(var) {
+  test <- t.test(filtered_properties[[var]] ~ filtered_properties$year_group)
+  data.frame(
+    Variable = var,
+    Mean_1990_2000 = round(mean(filtered_properties[[var]][filtered_properties$year_group == "1990_2000"], na.rm = TRUE), 2),
+    Mean_2010_2024 = round(mean(filtered_properties[[var]][filtered_properties$year_group == "2010_2024"], na.rm = TRUE), 2),
+    p.value = format.pval(test$p.value, digits = 4),
+    stringsAsFactors = FALSE
+  )
+})
+
+# Combine into a single table
+t_test_summary <- bind_rows(t_test_results)
+print(t_test_summary)
+
+# Extract dist_to_transit effects
+dist_to_transit_effects <- lapply(models, function(m) {
+  if (!is.null(m$model)) {
+    coef_summary <- summary(m$model)$coefficients
+    if ("dist_to_transit" %in% rownames(coef_summary)) {  # Fixed 'in' to '%in%'
+      beta <- coef_summary["dist_to_transit", "Estimate"]
+      pval <- coef_summary["dist_to_transit", "Pr(>|t|)"]
+      return(data.frame(
+        Model = m$name,
+        Coefficient = round(beta, 4),
+        p.value = format.pval(pval, digits = 4),
+        Significance = ifelse(pval < 0.05, "*", "")
+      ))
+    }
+  }
+  return(data.frame(
+    Model = m$name,
+    Coefficient = NA,
+    p.value = NA,
+    Significance = "Not available"
+  ))
+})
+
+# Combine into a table
+dist_to_transit_summary <- do.call(rbind, dist_to_transit_effects)
+print(dist_to_transit_summary)
+
+
+# Ensure year_group is a factor with correct levels
+filtered_properties <- filtered_properties %>%
+  mutate(year_group = factor(year_group, levels = c("1990_2000", "2010_2024")))
+
+# Scale the variables
+filtered_properties_scaled <- filtered_properties %>%
+  mutate(across(c("sale_price", "scaled_log_crime_density_sq", "dist_to_transit", "total_liva"), scale))
+
+# Define variables and labels
+variables <- c("sale_price", "scaled_log_crime_density_sq", "dist_to_transit", "total_liva")
+y_labels <- c("Sale Price (Scaled)", 
+              "Scaled Log Crime Density (Squared)", 
+              "Distance to Transit (Scaled)", 
+              "Living Area (Scaled)")
+
+# Reshape data for faceting
+filtered_properties_long <- filtered_properties_scaled %>%
+  select(year_group, all_of(variables)) %>%
+  tidyr::pivot_longer(cols = all_of(variables), names_to = "Variable", values_to = "Value") %>%
+  mutate(Variable = factor(Variable, levels = variables, labels = y_labels))
+
+# Create faceted boxplot
+p_facet <- ggplot(filtered_properties_long, aes(x = year_group, y = Value, fill = year_group)) +
+  geom_boxplot(alpha = 0.4) +
+  facet_wrap(~ Variable, scales = "free_y", ncol = 2) +
+  scale_fill_manual(values = c("1990_2000" = "blue", "2010_2024" = "red")) +
+  theme_minimal() +
+  labs(title = "Comparison of Property Characteristics by Year Built",
+       x = "Year Built Group",
+       y = "Scaled Value") +
+  theme(legend.position = "none")
+
+# Print and save the plot
+print(p_facet)
+ggsave("boxplot_all_variables_faceted.png", plot = p_facet, width = 10, height = 8, dpi = 300)
