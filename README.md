@@ -1,6 +1,6 @@
 # Spatial Analysis of Property Prices in Philadelphia
 
-![image]([https://github.com/user-attachments/assets/d63fcb8c-484a-4634-a61f-c80f8e9069ec](https://www.visitphilly.com/wp-content/uploads/2019/01/SEPTA_regionalrail_skyline_crtsySEPTA_2200vp.jpg)
+![image]([(https://www.visitphilly.com/wp-content/uploads/2019/01/SEPTA_regionalrail_skyline_crtsySEPTA_2200vp.jpg])
 
 
 ## 📖 Overview
