@@ -1,8 +1,6 @@
 # Spatial Analysis of Property Prices in Philadelphia
 
-![image]([(https://www.visitphilly.com/wp-content/uploads/2019/01/SEPTA_regionalrail_skyline_crtsySEPTA_2200vp.jpg])
-
-
+![SEPTA Regional Rail Skyline](https://www.visitphilly.com/wp-content/uploads/2019/01/SEPTA_regionalrail_skyline_crtsySEPTA_2200vp.jpg)
 ## 📖 Overview
 
 This project analyzes single-family properties in Philadelphia to explore how proximity to transit lines, crime incidents, and job locations influences sale prices. Using spatial data, the R script filters properties, calculates distances, computes metrics, runs regression models, and generates visualizations and reports.
