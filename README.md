@@ -86,6 +86,6 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## Contact
 
-For questions or feedback, open an issue or contact [arnold](arnoldnjengabiz@gmail.com)
+For questions or feedback, open an issue or contact arnoldnjengabiz@gmail.com
 
 If you find this project useful, please give it a star on GitHub!
